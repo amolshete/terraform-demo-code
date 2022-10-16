@@ -5,11 +5,19 @@ terraform {
       version = "4.33.0"
     }
   }
+
+
+  backend "s3" {
+    bucket = "terraform-webapp-demo"
+    key    = "state"
+    region = "ap-south-1"
+  }
 }
+
 
 # Configure the AWS Provider
 provider "aws" {
-  region = "ap-south-1"
+  region = var.REGION
 
 }
 
@@ -173,3 +181,76 @@ resource "aws_autoscaling_group" "webapp-ASG" {
 #   autoscaling_group_name = aws_autoscaling_group.webapp-ASG.id
 #   lb_target_group_arn    = aws_lb_target_group.webapp-LB-target-group.arn
 # }
+
+
+# creating target group for LB
+
+resource "aws_lb_target_group" "webapp-LB-target-group-2" {
+  name     = "webapp-LB-taget-group-2"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = aws_vpc.demo-vpc.id
+  
+}
+
+
+
+# Creating the load balancer
+
+resource "aws_lb" "webapp-LB-2" {
+  name               = "webapp-LB-2"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.allow_80-for-LB.id]
+  subnets            = [aws_subnet.mysubnet-1a.id,aws_subnet.mysubnet-1b.id]
+
+  # enable_deletion_protection = true
+
+  tags = {
+    Environment = "production-2"
+  }
+}
+
+
+# Creating the listener
+
+resource "aws_lb_listener" "webapp-LB-listener-2" {
+  load_balancer_arn = aws_lb.webapp-LB-2.arn
+  port              = "80"
+  protocol          = "HTTP"
+  
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.webapp-LB-target-group-2.arn
+  }
+}
+
+
+
+# Creating AWS autoscalling
+
+
+resource "aws_launch_template" "webapp-launch-template-2" {
+  name_prefix   = "webapp"
+  image_id      = "ami-02fdd155a52f092f4"
+  instance_type = "t2.micro"
+  key_name = "linux-machine-on-aws-1"
+  vpc_security_group_ids = [aws_security_group.allow_80_22.id]
+
+}
+
+
+resource "aws_autoscaling_group" "webapp-ASG-2" {
+  # availability_zones = ["ap-south-1a","ap-south-1b"]
+  desired_capacity   = 2
+  max_size           = 3
+  min_size           = 2
+  vpc_zone_identifier = [aws_subnet.mysubnet-1a.id,aws_subnet.mysubnet-1b.id]
+
+  target_group_arns = [aws_lb_target_group.webapp-LB-target-group-2.arn]
+
+  launch_template {
+    id      = aws_launch_template.webapp-launch-template-2.id
+    version = "$Latest"
+  }
+}
